@@ -1,0 +1,80 @@
+{
+    "Comment": "Step Functions workflow to manage conversation flow",
+    "StartAt": "Seed DynamoDB Table",
+    "TimeoutSeconds": 3600,
+    "States": {
+      "Seed DynamoDB Table": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "Next": "Initialize Conversation History"
+      },
+      "Initialize Conversation History": {
+        "Type": "Pass",
+        "Result": {},
+        "Next": "For Loop Condition"
+      },
+      "For Loop Condition": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.List[0]",
+            "StringEquals": "DONE",
+            "Next": "Succeed"
+          }
+        ],
+        "Default": "Read Next Message from DynamoDB"
+      },
+      "Read Next Message from DynamoDB": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::dynamodb:getItem",
+        "Parameters": {
+          "TableName": "ConversationTable",
+          "Key": {
+            "id": {
+              "S.$": "$.messageId"
+            }
+          }
+        },
+        "ResultPath": "$.MessageData",
+        "Next": "Update Conversation History with Message"
+      },
+      "Update Conversation History with Message": {
+        "Type": "Pass",
+        "ResultPath": "$.UpdatedHistory",
+        "Next": "Truncate Conversation History"
+      },
+      "Truncate Conversation History": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "Next": "Invoke Model with Message"
+      },
+      "Invoke Model with Message": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::bedrock:invokeModel",
+        "Parameters": {
+          "Input.$": "$.MessageData"
+        },
+        "ResultPath": "$.ModelResponse",
+        "Next": "Update Conversation History with Response"
+      },
+      "Update Conversation History with Response": {
+        "Type": "Pass",
+        "ResultPath": "$.UpdatedHistory",
+        "Next": "Truncate Conversation History After Response"
+      },
+      "Truncate Conversation History After Response": {
+        "Type": "Task",
+        "Resource": "arn:aws:lambda:REGION:ACCOUNT_ID:function:TruncateAfterResponseFunction",
+        "Next": "Pop Element from List"
+      },
+      "Pop Element from List": {
+        "Type": "Pass",
+        "Result": {},
+        "Next": "For Loop Condition"
+      },
+      "Succeed": {
+        "Type": "Succeed"
+      }
+    }
+  }
+  
